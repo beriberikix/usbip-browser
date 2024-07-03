@@ -1,0 +1,15 @@
+{
+  "name": "usbip-browser-client",
+  "version": "1.0.0",
+  "description": "Client for interacting with the usbip-browser proxy application",
+  "main": "src/index.ts",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js"
+  },
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "typescript": "^4.0.0"
+  }
+}
