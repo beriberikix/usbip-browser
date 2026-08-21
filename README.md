@@ -121,9 +121,19 @@ usbip list -l                  # find the busid
 sudo usbip bind -b 1-1         # detaches the kernel driver
 ```
 
-Then run a WISP server alongside it, and point the example at both. Note that `usbip bind`
-hands the device over entirely — this library is responsible for configuring it over endpoint 0,
-which is why `selectConfiguration` issues a real `SET_CONFIGURATION`.
+Then run a WISP server alongside it, and point the example at both.
+
+> **A freshly bound device arrives unconfigured.** `usbip bind` detaches the kernel driver and
+> leaves the device in the address state, so `OP_REP_DEVLIST` reports
+> `bConfigurationValue = 0`, `bNumInterfaces = 0`, and an empty `interfaces` array — verified
+> against usbipd 2.0 with an FTDI FT4232H. Two consequences:
+>
+> - **You must call `selectConfiguration`** before any interface or endpoint work. `0` is not a
+>   selectable configuration; `SET_CONFIGURATION(0)` *unconfigures* a device. `CdcAcmDevice`
+>   defaults to `1` when the device reports none.
+> - **Do not use `info.interfaces` to discover interfaces.** It is empty while unconfigured.
+>   Read the configuration descriptor over endpoint 0 instead — `scripts/hw-check.mjs` shows the
+>   two-stage read.
 
 **Mixed content:** an `https://` page cannot open a `ws://` socket, so the hosted demo needs
 `wss://`. Local development over `http://localhost` has no such restriction.
@@ -191,6 +201,16 @@ cd examples/xterm && npm run dev                   # or drive it from the browse
 
 `--allow-loopback` is required because the server refuses loopback and private addresses by
 default — a sensible default worth preserving in any real deployment.
+
+With real hardware bound, `scripts/hw-check.mjs` runs the same checks against a genuine
+`usbipd`. It is read-only: it lists, imports, and reads descriptors over endpoint 0, never
+writing to the device or touching bulk endpoints.
+
+```sh
+sudo modprobe usbip_host && sudo usbipd -D && sudo usbip bind -b 5-1
+node scripts/hw-check.mjs 5-1
+sudo usbip unbind -b 5-1        # afterwards
+```
 
 ## Licence
 

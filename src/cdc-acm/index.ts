@@ -31,7 +31,11 @@ export interface CdcAcmOptions {
   stopBits?: StopBits;
   /** Default 'none'. */
   parity?: Parity;
-  /** Configuration to select before use. Defaults to the device's own value. */
+  /**
+   * Configuration to select before use. Defaults to the device's current
+   * configuration, or 1 when it reports none -- which is what usbipd reports
+   * for any device it has just bound.
+   */
   configurationValue?: number;
   /** Control (communications) interface number. Default 0. */
   controlInterface?: number;
@@ -93,7 +97,11 @@ export class CdcAcmDevice {
       dataBits: options.dataBits ?? 8,
       stopBits: options.stopBits ?? 1,
       parity: options.parity ?? 'none',
-      configurationValue: options.configurationValue ?? device.info.configurationValue ?? 1,
+      // A device that usbipd has just bound is UNCONFIGURED, so it reports
+      // bConfigurationValue = 0. Zero is not a selectable configuration -- it
+      // is the standard request to *unconfigure* a device -- so `??` is wrong
+      // here and 0 must fall through to 1.
+      configurationValue: options.configurationValue || device.info.configurationValue || 1,
       controlInterface: options.controlInterface ?? 0,
       dataInterface: options.dataInterface ?? 1,
       endpointIn: options.endpointIn ?? 2,

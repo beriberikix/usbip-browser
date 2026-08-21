@@ -150,6 +150,52 @@ describe('URB phase', () => {
   });
 });
 
+describe('unconfigured device (as usbipd reports one it has just bound)', () => {
+  // Real usbipd reports bConfigurationValue = 0 and bNumInterfaces = 0 for a
+  // freshly bound device, because `usbip bind` leaves it unconfigured. Zero
+  // is not a selectable configuration -- SET_CONFIGURATION(0) *unconfigures*
+  // a device -- so it must not be passed through as a default.
+  const unconfigured = {
+    ...MOCK_DEVICE,
+    configurationValue: 0,
+    numInterfaces: 0,
+    interfaces: [],
+  };
+
+  async function connectedTo(device: typeof unconfigured) {
+    const client = new UsbipClient(new MockTransport({ device }));
+    await client.connect();
+    return client;
+  }
+
+  it('reports configurationValue 0 verbatim', async () => {
+    const client = await connectedTo(unconfigured);
+    const devices = await client.listDevices();
+    expect(devices[0]!.configurationValue).toBe(0);
+    expect(devices[0]!.interfaces).toEqual([]);
+  });
+
+  it('selects configuration 1 rather than deconfiguring the device', async () => {
+    const client = await connectedTo(unconfigured);
+    const device = await client.importDevice('1-1');
+    const port = await CdcAcmDevice.open(device);
+
+    expect(device.configurationValue).toBe(1);
+
+    await port.close();
+  });
+
+  it('still honours an explicit configurationValue', async () => {
+    const client = await connectedTo(unconfigured);
+    const device = await client.importDevice('1-1');
+    const port = await CdcAcmDevice.open(device, { configurationValue: 2 });
+
+    expect(device.configurationValue).toBe(2);
+
+    await port.close();
+  });
+});
+
 describe('CDC-ACM over the mock', () => {
   it('configures the port and streams the banner', async () => {
     const client = await connected();
