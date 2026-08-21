@@ -187,8 +187,15 @@ describe('v2 handshake', () => {
     expect(new TextDecoder().decode(connect.payload.subarray(3))).toBe('localhost');
   });
 
-  it('advertises the v2 subprotocol by default', async () => {
+  it('advertises no subprotocol by default', async () => {
+    // wisp-server-python 0.9.0 fails the WebSocket handshake if any
+    // subprotocol is requested, so the interoperable default is none.
     const { socket } = await begin();
+    expect(socket.protocols).toEqual([]);
+  });
+
+  it('advertises a subprotocol when one is configured', async () => {
+    const { socket } = await begin('localhost:3240', { subprotocols: ['wisp-v2'] });
     expect(socket.protocols).toEqual(['wisp-v2']);
   });
 

@@ -149,10 +149,16 @@ function encodeConnect(streamId: number, host: string, port: number): Uint8Array
 
 export interface WispTransportOptions {
   /**
-   * WebSocket subprotocol advertised during the handshake. Its presence is
-   * what signals v2 support to the server. The spec describes the header
-   * rather than fixing a token, so this is overridable; if a server refuses
-   * the connection outright, try `[]` to force v1.
+   * WebSocket subprotocols to advertise.
+   *
+   * Defaults to none, which is the only interoperable choice. The v2 spec
+   * says a `Sec-WebSocket-Protocol` header signals v2 support but does not
+   * fix a token, and wisp-server-python 0.9.0 fails the WebSocket handshake
+   * outright when *any* subprotocol is requested. Since a server that does
+   * not send INFO first is handled by the v1 fallback anyway, advertising
+   * nothing costs nothing and works everywhere.
+   *
+   * Set this only against a server known to require a particular token.
    */
   subprotocols?: string[];
   /** Credentials for the password-auth extension (0x02). */
@@ -244,7 +250,7 @@ export class WispTransport implements UsbipTransport {
     this.#opened = true;
 
     const timeoutMs = this.#options.timeoutMs ?? 10_000;
-    const subprotocols = this.#options.subprotocols ?? ['wisp-v2'];
+    const subprotocols = this.#options.subprotocols ?? [];
 
     const socket = new WebSocket(this.#url, subprotocols);
     socket.binaryType = 'arraybuffer';

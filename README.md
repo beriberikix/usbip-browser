@@ -55,6 +55,13 @@ The client implements **WISP v2** with automatic **v1 fallback**, and negotiates
 stream-open-confirmation extension whenever a server offers it — worth having, because USB/IP
 speaks first, so without it a wrong host looks like a hang rather than an error.
 
+> **No WebSocket subprotocol is advertised by default.** The v2 spec says a
+> `Sec-WebSocket-Protocol` header signals v2 support but never fixes a token, and
+> wisp-server-python 0.9.0 fails the WebSocket handshake outright if *any* subprotocol is
+> requested. Advertising none costs nothing — a server that doesn't send `INFO` first is handled
+> by the v1 fallback — so it is the only interoperable default. Override with `subprotocols`
+> if you have a server that requires one.
+
 ```ts
 new WispTransport('wss://relay.example/', '192.168.1.10:3240', {
   auth: { username: 'ada', password: '…' },   // extension 0x02
@@ -158,13 +165,32 @@ entirely.
 
 ```sh
 npm install
-npm test          # 64 tests: codec, framing, WISP handshake, end-to-end
+npm test          # 65 tests: codec, framing, WISP handshake, end-to-end
 npm run typecheck
 npm run build
 ```
 
 The dependency-free constraint is enforced in CI, because every off-the-shelf WISP and TLS
 implementation in this ecosystem is AGPL.
+
+### Testing against a real WISP server, without USB hardware
+
+`MockTransport` is the server half of USB/IP, so putting a socket around it gives a usable fake
+`usbipd`. Combined with a real WISP server, this exercises the whole live path:
+
+```sh
+npm run build
+node scripts/fake-usbipd.mjs                       # USB/IP on 127.0.0.1:3240
+
+pip install git+https://github.com/MercuryWorkshop/wisp-server-python
+python -m wisp.server --host 127.0.0.1 --port 6001 --allow-loopback
+
+node scripts/live-check.mjs                        # headless assertions
+cd examples/xterm && npm run dev                   # or drive it from the browser
+```
+
+`--allow-loopback` is required because the server refuses loopback and private addresses by
+default — a sensible default worth preserving in any real deployment.
 
 ## Licence
 
