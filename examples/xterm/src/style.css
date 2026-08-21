@@ -1,0 +1,221 @@
+:root {
+  --bg: #ffffff;
+  --fg: #16181d;
+  --muted: #5c6370;
+  --line: #e2e5ea;
+  --panel: #f7f8fa;
+  --accent: #2f6feb;
+  --accent-fg: #ffffff;
+  --term-bg: #12141a;
+  --term-fg: #e6e8ee;
+  --ok: #1a7f4b;
+  --err: #c0392b;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0d0f14;
+    --fg: #e6e8ee;
+    --muted: #9aa3b2;
+    --line: #262b35;
+    --panel: #151922;
+    --accent: #5b8cf5;
+    --accent-fg: #0d0f14;
+    --term-bg: #0a0c11;
+    --term-fg: #e6e8ee;
+    --ok: #4ec98a;
+    --err: #ff6b5e;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+/* `display: flex` on .live-fields would otherwise defeat the hidden attribute. */
+[hidden] {
+  display: none !important;
+}
+
+body {
+  margin: 0;
+  padding: 1.25rem;
+  background: var(--bg);
+  color: var(--fg);
+  font: 15px/1.5 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  min-height: 100vh;
+}
+
+.bar h1 {
+  margin: 0;
+  font-size: 1.15rem;
+  letter-spacing: -0.01em;
+}
+
+.tagline {
+  margin: 0.15rem 0 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 0.9rem 1rem;
+}
+
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.85rem;
+}
+
+fieldset.modes {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0.4rem 0.7rem 0.55rem;
+  margin: 0;
+  display: flex;
+  gap: 0.8rem;
+}
+
+fieldset.modes legend {
+  font-size: 0.75rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+fieldset.modes label {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.9rem;
+}
+
+.live-fields {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.live-fields label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  font-size: 0.75rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+input[type='text'],
+input[type='url'] {
+  font: inherit;
+  font-size: 0.9rem;
+  padding: 0.4rem 0.55rem;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--bg);
+  color: var(--fg);
+}
+
+button {
+  font: inherit;
+  font-size: 0.9rem;
+  padding: 0.45rem 0.95rem;
+  border-radius: 7px;
+  border: 1px solid var(--line);
+  background: var(--bg);
+  color: var(--fg);
+  cursor: pointer;
+}
+
+button.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-fg);
+  font-weight: 600;
+}
+
+button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.status {
+  margin: 0.7rem 0 0;
+  font-size: 0.85rem;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.status[data-state='ok'] {
+  color: var(--ok);
+}
+.status[data-state='error'] {
+  color: var(--err);
+}
+
+.motd {
+  margin: 0.4rem 0 0;
+  padding: 0.45rem 0.6rem;
+  border-left: 3px solid var(--accent);
+  background: var(--bg);
+  font-size: 0.85rem;
+  white-space: pre-wrap;
+}
+
+#terminal {
+  flex: 1;
+  min-height: 22rem;
+  background: var(--term-bg);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 0.6rem;
+  overflow: hidden;
+}
+
+/* xterm's viewport draws a native scrollbar that ignores the page theme. */
+#terminal .xterm-viewport {
+  background: var(--term-bg) !important;
+  scrollbar-width: thin;
+  scrollbar-color: #3a4150 var(--term-bg);
+}
+
+#terminal .xterm-viewport::-webkit-scrollbar {
+  width: 10px;
+}
+
+#terminal .xterm-viewport::-webkit-scrollbar-track {
+  background: var(--term-bg);
+}
+
+#terminal .xterm-viewport::-webkit-scrollbar-thumb {
+  background: #3a4150;
+  border-radius: 5px;
+}
+
+.foot {
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.foot p {
+  margin: 0;
+  max-width: 70ch;
+}
+
+.foot a {
+  color: var(--accent);
+}
+
+code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.95em;
+}
