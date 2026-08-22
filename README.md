@@ -27,6 +27,18 @@ None of that applies here, because **this library is not a USB host**. It is a p
 the remote kernel does the USB work and we exchange URBs over TCP. A remote keyboard, webcam or
 flash drive is just bytes on a socket. No picker, no udev rules, no blocklist.
 
+This is demonstrated rather than asserted. `scripts/msc-check.mjs` reads a partition table off a
+USB flash drive — interface class `0x08`, which Chrome refuses to let WebUSB claim at all:
+
+```
+class-specific control transfer (Get Max LUN)
+  ✓ Get Max LUN returned 0
+SCSI INQUIRY over bulk (3-phase: CBW / data / CSW)
+  ✓ CSW status: command passed
+SCSI READ (10) of logical block 0
+  ✓ block 0 carries the 0x55AA boot signature (a real partition table)
+```
+
 The trade-off is that you need a `usbipd` on the machine with the hardware, and a bridge to reach
 it from a browser.
 
@@ -207,10 +219,22 @@ With real hardware bound, `scripts/hw-check.mjs` runs the same checks against a 
 writing to the device or touching bulk endpoints.
 
 ```sh
-sudo modprobe usbip_host && sudo usbipd -D && sudo usbip bind -b 5-1
-node scripts/hw-check.mjs 5-1
-sudo usbip unbind -b 5-1        # afterwards
+sudo modprobe usbip_host && sudo usbipd -D && sudo usbip bind -b <busid>
+node scripts/hw-check.mjs <busid>
+sudo usbip unbind -b <busid>    # afterwards
 ```
+
+Three hardware scripts, each covering a different part of the surface. All are read-only except
+where noted:
+
+| Script | Device used to verify it | Covers |
+|---|---|---|
+| `hw-check.mjs` | FTDI FT4232H | Standard control IN: device, configuration, and string descriptors |
+| `cp210x-bulk-check.mjs` | CP2102N + ESP32-C3 | Vendor control transfers, bulk IN/OUT, `CMD_UNLINK`. *Resets the ESP32.* |
+| `msc-check.mjs` | USB flash drive | Class-specific control IN, three-phase SCSI over bulk |
+
+Unmount a storage device before binding it — `usbip bind` detaches it from `usb-storage` while
+the kernel still believes it is mounted.
 
 ## Licence
 
