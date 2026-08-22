@@ -321,6 +321,34 @@ describe('CLOSE handling', () => {
     socket.receive(WISP_CLOSE, 0, new Uint8Array([0xc2]));
     await expect(opening).rejects.toThrow(/credentials required/);
   });
+
+  it('treats a voluntary closure as a clean end, not an error', async () => {
+    // usbipd hangs up after answering OP_REQ_DEVLIST. Surfacing that as an
+    // error turns routine protocol behaviour into a spurious failure.
+    const transport = new WispTransport('wss://relay.example/', 'localhost:3240');
+    const causes: Array<Error | undefined> = [];
+    transport.onClose((cause) => causes.push(cause));
+    const opening = transport.open();
+    await Promise.resolve();
+    const socket = FakeWebSocket.last!;
+    socket.fireOpen();
+    await Promise.resolve();
+    socket.receive(WISP_CONTINUE, 0, u32le(4));
+    await opening;
+
+    socket.receive(WISP_CLOSE, 1, new Uint8Array([0x02]));
+    await Promise.resolve();
+
+    expect(causes).toEqual([undefined]);
+  });
+
+  it('still fails a voluntary closure that arrives mid-handshake', async () => {
+    // Closing before the stream is usable is a real failure, whatever reason
+    // the server states.
+    const { socket, opening } = await begin();
+    socket.receive(WISP_CLOSE, 0, new Uint8Array([0x02]));
+    await expect(opening).rejects.toThrow(/voluntary stream closure/);
+  });
 });
 
 describe('flow control', () => {

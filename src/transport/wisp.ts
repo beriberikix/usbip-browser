@@ -33,6 +33,9 @@ export const WISP_EXT = {
   STREAM_OPEN_CONFIRMATION: 0x05,
 } as const;
 
+/** The far end finished and hung up: an ordinary end of stream, not a fault. */
+export const WISP_CLOSE_VOLUNTARY = 0x02;
+
 /** Close reasons worth naming; anything else surfaces as its raw code. */
 const CLOSE_REASONS: Record<number, string> = {
   0x01: 'unspecified error',
@@ -514,8 +517,27 @@ export class WispTransport implements UsbipTransport {
   #onClosePacket(packet: WispPacket): void {
     const reason = packet.payload[0] ?? 0;
     const description = CLOSE_REASONS[reason] ?? `reason 0x${reason.toString(16)}`;
-    const error = new WispError(`WISP stream closed: ${description}`, reason);
-    this.#fail(error);
+
+    // Reason 0x02 is a voluntary closure: the far end finished and hung up.
+    // usbipd does exactly this after answering OP_REQ_DEVLIST, so treating it
+    // as an error would turn routine protocol behaviour into a spurious
+    // failure -- and, with nothing awaiting the transport, an unhandled
+    // rejection. A handshake still in flight is different: closing before the
+    // stream is usable is a genuine failure whatever the stated reason.
+    if (reason === WISP_CLOSE_VOLUNTARY && !this.#handshake) {
+      this.#closeCleanly();
+      return;
+    }
+
+    this.#fail(new WispError(`WISP stream closed: ${description}`, reason));
+  }
+
+  /** End the connection without synthesising an error. */
+  #closeCleanly(): void {
+    if (this.#closed) return;
+    this.#closed = true;
+    this.#releaseAllWaiters();
+    this.#closeHandler?.();
   }
 
   #settle(): void {

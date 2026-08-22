@@ -176,6 +176,26 @@ interface UsbipTransport {
 The same seam takes a Direct Sockets `TCPSocket` in an Isolated Web App, which removes the bridge
 entirely.
 
+## Known-unverified
+
+Two paths are implemented and unit-tested, but have never run against a real kernel:
+
+- **`CdcAcmDevice` against genuine CDC-ACM hardware.** The class requests (`SET_LINE_CODING`,
+  `SET_CONTROL_LINE_STATE`) and the read stream are covered by tests that replay behaviour
+  observed on real hardware — including the zero-length-completion interleaving that once stalled
+  the stream — but the hardware checks drive `transferIn` directly rather than through
+  `CdcAcmDevice`. A real CDC-ACM device (an ESP32-C3's native USB, a Pi Pico, an Arduino
+  Leonardo) would close this.
+- **Interrupt endpoints.** Supported in the same code path as bulk, and differing only in
+  scheduling, but never exercised against a kernel.
+
+> **`usbip-vudc` is not a safe way to close these gaps.** It is the obvious approach — the kernel
+> synthesises a CDC-ACM or HID gadget and exports it, no hardware needed — and
+> `scripts/vudc-setup.sh` implements it. But driving it from a USB/IP client that is not the
+> kernel's own `vhci` **hard-froze a Linux 7.0 workstation twice**, requiring a power cycle, with
+> nothing in the logs. The script therefore refuses to run without `--in-vm`. Use a throwaway VM,
+> where a kernel hang costs you the VM instead of your session.
+
 ## Not supported
 
 - **Isochronous transfers.** The kernel's 1 ms cadence is not reachable through a JS event loop.
