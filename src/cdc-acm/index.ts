@@ -110,37 +110,49 @@ export class CdcAcmDevice {
     };
 
     this.readable = new ReadableStream<Uint8Array>({
+      // A `pull` that returns without enqueuing is treated by the stream as
+      // satisfied, and it will not be called again until the next read --
+      // which never comes, because the consumer is already waiting. So this
+      // must not return until it has actually produced data.
+      //
+      // That matters because both non-productive outcomes happen routinely on
+      // real hardware: an ESP32-C3 boot log arrives as 32 data packets
+      // interleaved with 9 zero-length completions, and endpoints stall.
+      // Returning on either one stalls the stream permanently.
       pull: async (controller) => {
-        if (this.#closed) {
-          controller.close();
-          return;
-        }
-        try {
-          const result = await this.#device.transferIn(
-            this.#options.endpointIn,
-            this.#options.readSize,
-            this.#abort.signal,
-          );
-          const bytes = new Uint8Array(
-            result.data.buffer,
-            result.data.byteOffset,
-            result.data.byteLength,
-          );
-          // A zero-length packet is a normal idle result, not data.
-          if (bytes.length > 0) controller.enqueue(bytes.slice());
-        } catch (error) {
-          if (this.#closed || (error instanceof Error && error.name === 'AbortError')) {
-            controller.close();
+        while (!this.#closed) {
+          try {
+            const result = await this.#device.transferIn(
+              this.#options.endpointIn,
+              this.#options.readSize,
+              this.#abort.signal,
+            );
+            const bytes = new Uint8Array(
+              result.data.buffer,
+              result.data.byteOffset,
+              result.data.byteLength,
+            );
+            // Zero length is a short-packet/idle completion, not end of
+            // stream. Keep waiting for real data.
+            if (bytes.length > 0) {
+              controller.enqueue(bytes.slice());
+              return;
+            }
+          } catch (error) {
+            if (this.#closed || (error instanceof Error && error.name === 'AbortError')) {
+              controller.close();
+              return;
+            }
+            // A stalled IN endpoint is recoverable: clear it and keep going.
+            if (error instanceof UsbipTransferError && error.stalled) {
+              await this.#device.clearHalt('in', this.#options.endpointIn).catch(() => {});
+              continue;
+            }
+            controller.error(error);
             return;
           }
-          // A stalled IN endpoint is recoverable; clear it and let the next
-          // pull retry rather than tearing down the stream.
-          if (error instanceof UsbipTransferError && error.stalled) {
-            await this.#device.clearHalt('in', this.#options.endpointIn).catch(() => {});
-            return;
-          }
-          controller.error(error);
         }
+        controller.close();
       },
       cancel: () => {
         this.#abort.abort();
