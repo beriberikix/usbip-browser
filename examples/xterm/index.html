@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>usbip-browser — terminal over USB/IP</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><text y='14' font-size='14'>🔌</text></svg>" />
+    <link rel="stylesheet" href="./src/style.css" />
+  </head>
+  <body>
+    <header class="bar">
+      <h1>usbip-browser</h1>
+      <p class="tagline">A USB/IP client in the browser. No WebUSB involved.</p>
+    </header>
+
+    <section class="panel" aria-label="Connection">
+      <div class="row">
+        <fieldset class="modes">
+          <legend>Source</legend>
+          <label>
+            <input type="radio" name="mode" value="mock" checked />
+            <span>Mock device</span>
+          </label>
+          <label>
+            <input type="radio" name="mode" value="live" />
+            <span>Live (WISP)</span>
+          </label>
+        </fieldset>
+
+        <div class="live-fields" data-live hidden>
+          <label>
+            WISP relay
+            <input id="relay" type="url" placeholder="wss://relay.example/" size="26" />
+          </label>
+          <label>
+            usbipd host:port
+            <input id="target" type="text" placeholder="192.168.1.10:3240" size="20" />
+          </label>
+          <label>
+            busid
+            <input id="busid" type="text" placeholder="1-1" size="8" />
+          </label>
+        </div>
+
+        <button id="connect" type="button" class="primary">Connect</button>
+        <button id="disconnect" type="button" hidden>Disconnect</button>
+      </div>
+
+      <p id="status" class="status" role="status">Ready. Mock mode needs no setup — just connect.</p>
+      <p id="motd" class="motd" hidden></p>
+    </section>
+
+    <main id="terminal" aria-label="Serial terminal"></main>
+
+    <footer class="foot">
+      <p>
+        Mock mode runs an in-browser USB/IP server that emits real wire bytes through the same
+        codec as the network path. Live mode needs a
+        <a href="https://github.com/MercuryWorkshop/wisp-protocol" rel="noreferrer">WISP</a>
+        server reachable over <code>wss://</code>, bridging to <code>usbipd</code> on port 3240.
+      </p>
+    </footer>
+
+    <script type="module" src="./src/main.ts"></script>
+  </body>
+</html>

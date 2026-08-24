@@ -1,0 +1,44 @@
+{
+  "name": "usbip-browser",
+  "version": "0.1.0",
+  "description": "USB/IP client for the browser. Talk to remote USB devices over WISP, without WebUSB.",
+  "type": "module",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/beriberikix/usbip-browser.git"
+  },
+  "keywords": ["usbip", "usb", "wisp", "browser", "cdc-acm", "serial"],
+  "sideEffects": false,
+  "files": ["dist"],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./wisp": {
+      "types": "./dist/wisp.d.ts",
+      "import": "./dist/wisp.js"
+    },
+    "./cdc-acm": {
+      "types": "./dist/cdc-acm.d.ts",
+      "import": "./dist/cdc-acm.js"
+    },
+    "./mock": {
+      "types": "./dist/mock.d.ts",
+      "import": "./dist/mock.js"
+    }
+  },
+  "scripts": {
+    "build": "tsup",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "deps:check": "npm ls --prod --depth=0"
+  },
+  "devDependencies": {
+    "tsup": "^8.3.5",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  }
+}

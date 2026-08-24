@@ -1,0 +1,23 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "noEmit": true,
+    "isolatedModules": true,
+    "skipLibCheck": true,
+    "verbatimModuleSyntax": true,
+    "types": ["node"],
+    // Mirrors the aliases in vite.config.ts so the example type-checks against
+    // the library sources rather than a built dist/.
+    "paths": {
+      "usbip-browser": ["../../src/index.ts"],
+      "usbip-browser/wisp": ["../../src/transport/wisp.ts"],
+      "usbip-browser/cdc-acm": ["../../src/cdc-acm/index.ts"],
+      "usbip-browser/mock": ["../../src/mock/index.ts"]
+    }
+  },
+  "include": ["src", "vite.config.ts"]
+}

@@ -1,0 +1,45 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Test
+        run: npm test
+
+      - name: Build library
+        run: npm run build
+
+      # The library must stay dependency-free: the available WISP and TLS
+      # implementations in this ecosystem are AGPL, and any runtime dependency
+      # would propagate its licence to every consumer of this package.
+      - name: Assert zero runtime dependencies
+        run: |
+          count=$(node -p "Object.keys(require('./package.json').dependencies || {}).length")
+          if [ "$count" != "0" ]; then
+            echo "::error::package.json declares $count runtime dependencies; expected 0"
+            exit 1
+          fi
+
+      - name: Build example
+        working-directory: examples/xterm
+        run: |
+          npm ci
+          npm run build
