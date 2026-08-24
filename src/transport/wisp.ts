@@ -207,8 +207,18 @@ export class WispTransport implements UsbipTransport {
 
   /**
    * Remaining server-side buffer slots, decremented once per DATA packet.
+   *
    * Starts at Infinity so that a server which never sends CONTINUE cannot
-   * deadlock us; the first CONTINUE switches us into real accounting.
+   * deadlock us; the first CONTINUE switches us into real accounting. In
+   * practice a compliant server advertises a window during the handshake,
+   * well before any USB/IP data flows, so the unbounded state is live only
+   * between `open()` resolving and the first `send()`.
+   *
+   * Residual risk, accepted deliberately: against a server that never sends
+   * CONTINUE at all, the window stays Infinity for the connection's lifetime
+   * and a large burst is sent unthrottled at the WISP layer, falling back on
+   * the WebSocket's own buffering and TCP backpressure. That is preferable to
+   * deadlocking against every server that does not implement the extension.
    */
   #window = Number.POSITIVE_INFINITY;
   #initialWindow = Number.POSITIVE_INFINITY;
@@ -262,6 +272,10 @@ export class WispTransport implements UsbipTransport {
     const handshake = new Promise<void>((resolve, reject) => {
       this.#handshake = { resolve, reject, stage: 'awaiting-info' };
     });
+    // If the timeout below wins the race, this promise is still rejected
+    // later by the cleanup path; swallow that so it is not reported as an
+    // unhandled rejection.
+    handshake.catch(() => {});
 
     socket.addEventListener('message', (event) => this.#onMessage(event));
     socket.addEventListener('error', () => {
@@ -286,7 +300,14 @@ export class WispTransport implements UsbipTransport {
     // A v1 server sends CONTINUE first and never an INFO. We cannot know which
     // we are talking to until a packet arrives, so both paths are driven from
     // #onMessage and settle this promise.
-    await this.#withTimeout(handshake, timeoutMs, 'WISP handshake');
+    try {
+      await this.#withTimeout(handshake, timeoutMs, 'WISP handshake');
+    } catch (error) {
+      // A timeout rejects the race without going through #onMessage, so the
+      // socket would otherwise be left open with no handshake to settle it.
+      this.#fail(error instanceof Error ? error : new WispError(String(error)));
+      throw error;
+    }
   }
 
   async send(chunk: Uint8Array): Promise<void> {
@@ -550,6 +571,11 @@ export class WispTransport implements UsbipTransport {
     const handshake = this.#handshake;
     this.#handshake = null;
     this.#releaseAllWaiters();
+    // Every failure path lands here, and none of them previously closed the
+    // socket -- so a rejected handshake (bad INFO, refused auth, timeout)
+    // left a live WebSocket with nothing able to close it. Repeated failed
+    // connection attempts leaked one apiece.
+    this.#closeSocket();
 
     if (handshake) {
       this.#closed = true;
@@ -559,6 +585,19 @@ export class WispTransport implements UsbipTransport {
     if (this.#closed) return;
     this.#closed = true;
     this.#closeHandler?.(error);
+  }
+
+  /** Close the WebSocket if it is still live. Safe to call repeatedly. */
+  #closeSocket(): void {
+    const socket = this.#socket;
+    if (!socket) return;
+    if (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING) {
+      try {
+        socket.close();
+      } catch {
+        // Already going away.
+      }
+    }
   }
 
   async #withTimeout<T>(promise: Promise<T>, ms: number, what: string): Promise<T> {

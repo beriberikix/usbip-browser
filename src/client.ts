@@ -36,6 +36,12 @@ interface Pending {
   expectedLength: number;
   resolve: (r: { data: Uint8Array; status: number }) => void;
   reject: (e: Error) => void;
+  /**
+   * Set once the caller has aborted and been rejected. The entry deliberately
+   * stays in the map: `isIn` is the only way to know whether a late reply
+   * carries a payload that must be drained off the stream.
+   */
+  abandoned?: boolean;
 }
 
 type State = 'idle' | 'op' | 'urb' | 'closed';
@@ -63,6 +69,8 @@ export class UsbipClient {
   #state: State = 'idle';
   #seqnum = 0;
   #pending = new Map<number, Pending>();
+  /** Unlink command seqnum -> the URB seqnum it is cancelling. */
+  #unlinks = new Map<number, number>();
   #device: UsbipDevice | null = null;
   #opTimeoutMs: number;
 
@@ -161,15 +169,24 @@ export class UsbipClient {
     });
 
     const onAbort = () => {
-      // Best-effort: tell the server to drop the URB. The reply still arrives
-      // (as RET_SUBMIT with an error status or RET_UNLINK), and the loop
-      // discards it because the pending entry is already gone.
       const pending = this.#pending.get(seqnum);
       if (!pending) return;
-      this.#pending.delete(seqnum);
+
+      // Reject the caller now, but KEEP the entry. Aborting is a race, not a
+      // cancellation: the URB may already have completed on the device, in
+      // which case the server sends an ordinary RET_SUBMIT carrying real
+      // payload bytes -- it has no idea we stopped caring. Forgetting the
+      // entry would lose `isIn`, so those bytes would never be read out of
+      // the stream and every subsequent header would be parsed from the
+      // middle of a payload. The entry is retired when the matching reply
+      // actually arrives.
+      pending.abandoned = true;
       pending.reject(new DOMException('The transfer was aborted.', 'AbortError'));
+
+      const unlinkSeqnum = this.#nextSeqnum();
+      this.#unlinks.set(unlinkSeqnum, seqnum);
       void this.#transport
-        .send(encodeCmdUnlink({ command: 0, seqnum: this.#nextSeqnum(), devid, direction: 0, ep: 0 }, seqnum))
+        .send(encodeCmdUnlink({ command: 0, seqnum: unlinkSeqnum, devid, direction: 0, ep: 0 }, seqnum))
         .catch(() => {});
     };
     signal?.addEventListener('abort', onAbort, { once: true });
@@ -233,7 +250,13 @@ export class UsbipClient {
         const reply = decodeUrbHeader(await this.#reader.read(SIZEOF_URB_HEADER));
 
         if (reply.kind === 'unlink') {
-          this.#pending.delete(reply.header.seqnum);
+          // RET_UNLINK echoes the unlink command's own seqnum, not the URB it
+          // cancelled, so the victim is looked up rather than deleted
+          // directly. Its arrival means the URB really was cancelled and no
+          // RET_SUBMIT is coming, so the abandoned entry can be retired.
+          const victim = this.#unlinks.get(reply.header.seqnum);
+          this.#unlinks.delete(reply.header.seqnum);
+          if (victim !== undefined) this.#pending.delete(victim);
           continue;
         }
 
@@ -242,12 +265,18 @@ export class UsbipClient {
 
         // Payload presence comes from OUR record of the request, never from
         // the reply's direction field, which usbipd implementations do not
-        // set reliably.
+        // set reliably. Abandoned entries are consulted for exactly this
+        // reason: the bytes must come off the stream even though nobody
+        // wants them any more.
         const hasPayload = (pending?.isIn ?? false) && actualLength > 0;
         const data = hasPayload ? await this.#reader.read(actualLength) : new Uint8Array(0);
 
-        if (!pending) continue; // aborted or unknown; payload already drained
+        if (!pending) continue; // unknown seqnum; nothing further to do
         this.#pending.delete(reply.header.seqnum);
+
+        // The caller was already rejected when they aborted; this reply only
+        // existed to be drained.
+        if (pending.abandoned) continue;
 
         if (status !== 0) {
           pending.reject(new UsbipTransferError(`transfer failed with status ${status}`, status));
@@ -264,7 +293,10 @@ export class UsbipClient {
     if (this.#state !== 'closed') this.#state = 'closed';
     this.#reader.close(cause);
     const error = cause ?? new UsbipClosedError('connection closed');
-    for (const pending of this.#pending.values()) pending.reject(error);
+    for (const pending of this.#pending.values()) {
+      if (!pending.abandoned) pending.reject(error);
+    }
     this.#pending.clear();
+    this.#unlinks.clear();
   }
 }

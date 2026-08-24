@@ -351,6 +351,58 @@ describe('CLOSE handling', () => {
   });
 });
 
+describe('socket lifetime on failure', () => {
+  // Every failure path used to leave the WebSocket open with nothing able to
+  // close it, so repeated failed connection attempts leaked one apiece.
+  it('closes the socket when the handshake is refused', async () => {
+    const { socket, opening } = await begin();
+    socket.receive(
+      WISP_INFO,
+      0,
+      infoPayload(2, 0, [{ id: WISP_EXT.PASSWORD_AUTH, payload: new Uint8Array([1]) }]),
+    );
+    await expect(opening).rejects.toThrow(/requires password authentication/);
+    expect(socket.closed).toBe(true);
+  });
+
+  it('closes the socket when the handshake times out', async () => {
+    const transport = new WispTransport('wss://relay.example/', 'localhost:3240', {
+      timeoutMs: 40,
+    });
+    const opening = transport.open();
+    await Promise.resolve();
+    const socket = FakeWebSocket.last!;
+    socket.fireOpen();
+
+    // The server says nothing at all.
+    await expect(opening).rejects.toThrow(/timed out/);
+    expect(socket.closed).toBe(true);
+  });
+
+  it('closes the socket when a malformed INFO arrives', async () => {
+    const { socket, opening } = await begin();
+    socket.receive(WISP_INFO, 0, new Uint8Array([2])); // shorter than 2 bytes
+    await expect(opening).rejects.toThrow(/INFO packet/);
+    expect(socket.closed).toBe(true);
+  });
+
+  it('closes the socket when a stream error arrives after the handshake', async () => {
+    const transport = new WispTransport('wss://relay.example/', 'localhost:3240');
+    transport.onClose(() => {});
+    const opening = transport.open();
+    await Promise.resolve();
+    const socket = FakeWebSocket.last!;
+    socket.fireOpen();
+    await Promise.resolve();
+    socket.receive(WISP_CONTINUE, 0, u32le(4));
+    await opening;
+
+    socket.receive(WISP_CLOSE, 1, new Uint8Array([0x43])); // connection refused
+    await Promise.resolve();
+    expect(socket.closed).toBe(true);
+  });
+});
+
 describe('flow control', () => {
   it('sends DATA packets on the negotiated stream', async () => {
     const { transport, socket, opening } = await begin();

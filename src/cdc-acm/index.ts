@@ -22,6 +22,24 @@ export type StopBits = 1 | 1.5 | 2;
 const PARITY_CODES: Record<Parity, number> = { none: 0, odd: 1, even: 2, mark: 3, space: 4 };
 const STOP_BIT_CODES: Record<string, number> = { '1': 0, '1.5': 1, '2': 2 };
 
+/** Consecutive stalls tolerated before the read stream gives up. */
+const MAX_CONSECUTIVE_STALLS = 8;
+
+/**
+ * Close a stream controller that may already be closed.
+ *
+ * When the consumer cancels, the stream is already in the closed state by the
+ * time our in-flight `transferIn` rejects with AbortError, and calling
+ * `close()` then throws a TypeError.
+ */
+function closeSafely(controller: ReadableStreamDefaultController<Uint8Array>): void {
+  try {
+    controller.close();
+  } catch {
+    // Already closed by cancellation.
+  }
+}
+
 export interface CdcAcmOptions {
   /** Bits per second. Default 115200. */
   baudRate?: number;
@@ -120,6 +138,7 @@ export class CdcAcmDevice {
       // interleaved with 9 zero-length completions, and endpoints stall.
       // Returning on either one stalls the stream permanently.
       pull: async (controller) => {
+        let stalls = 0;
         while (!this.#closed) {
           try {
             const result = await this.#device.transferIn(
@@ -138,21 +157,33 @@ export class CdcAcmDevice {
               controller.enqueue(bytes.slice());
               return;
             }
+            stalls = 0;
           } catch (error) {
             if (this.#closed || (error instanceof Error && error.name === 'AbortError')) {
-              controller.close();
+              closeSafely(controller);
               return;
             }
-            // A stalled IN endpoint is recoverable: clear it and keep going.
+            // A stalled IN endpoint is usually transient: clear it and retry.
+            // A device that stalls every attempt is not, so give up rather
+            // than retry forever.
             if (error instanceof UsbipTransferError && error.stalled) {
-              await this.#device.clearHalt('in', this.#options.endpointIn).catch(() => {});
-              continue;
+              if (++stalls <= MAX_CONSECUTIVE_STALLS) {
+                await this.#device.clearHalt('in', this.#options.endpointIn).catch(() => {});
+                continue;
+              }
+              controller.error(
+                new UsbipTransferError(
+                  `endpoint ${this.#options.endpointIn} stalled ${stalls} times in a row`,
+                  error.status,
+                ),
+              );
+              return;
             }
             controller.error(error);
             return;
           }
         }
-        controller.close();
+        closeSafely(controller);
       },
       cancel: () => {
         this.#abort.abort();
