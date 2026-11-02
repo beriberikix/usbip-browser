@@ -269,3 +269,37 @@ describe('CDC-ACM over the mock', () => {
     await port.close();
   });
 });
+
+describe('a usbipd that hangs up after OP_REP_DEVLIST', () => {
+  // Real usbipd closes the connection as soon as it has sent the device list.
+  // A fast transport can report that close before the parser has read the
+  // reply; the reply must still parse.
+  class HangUpAfterDevlist extends MockTransport {
+    #onData: ((chunk: Uint8Array) => void) | null = null;
+    #onClose: ((cause?: Error) => void) | null = null;
+    override onData(handler: (chunk: Uint8Array) => void): void {
+      this.#onData = handler;
+      super.onData((chunk) => {
+        handler(chunk);
+        received += chunk.length;
+        // header (8) + count (4) + one usb_device (312) + its interfaces (4 each)
+        if (received >= 8 + 4 + 312 + 4 * MOCK_DEVICE.interfaces.length) this.#onClose?.();
+      });
+    }
+    override onClose(handler: (cause?: Error) => void): void {
+      this.#onClose = handler;
+      super.onClose(handler);
+    }
+  }
+  let received = 0;
+
+  it('still lists the device', async () => {
+    received = 0;
+    const client = new UsbipClient(new HangUpAfterDevlist());
+    await client.connect();
+    const devices = await client.listDevices();
+    expect(devices).toHaveLength(1);
+    expect(devices[0]!.busid).toBe('1-1');
+    expect(devices[0]!.interfaces).toHaveLength(MOCK_DEVICE.interfaces.length);
+  });
+});

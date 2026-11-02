@@ -1,6 +1,6 @@
 /**
  * Bulk transfer verification against real hardware: a CP2102N bridge in front
- * of an ESP32-C3.
+ * of an ESP32 (verified with an ESP32-C3 and an ESP32-S3).
  *
  * The CP2102N is vendor-class (0xFF), so CdcAcmDevice does not apply -- this
  * drives it with CP210x vendor control requests and raw bulk transfers.
@@ -165,7 +165,7 @@ pass('SET_BAUDRATE 115200');
 
 // -- bulk IN: reset the chip and capture its ROM banner ---------------------
 
-console.log('\nbulk IN — ESP32-C3 ROM banner after reset');
+console.log('\nbulk IN — ESP32 ROM banner after reset');
 await setMhs(device, { dtr: false, rts: true }); // EN low: hold in reset
 await sleep(150);
 await setMhs(device, { dtr: false, rts: false }); // release: boot the app
@@ -175,7 +175,8 @@ check(boot.bytes.length > 0, `read ${boot.bytes.length} bytes in ${boot.packets}
 info(`${boot.zeroLength} zero-length completions, slowest URB ${boot.slowestMs}ms, ${boot.unlinks} unlink(s)`);
 
 const text = new TextDecoder('latin1').decode(boot.bytes);
-check(text.includes('ESP-ROM:esp32c3'), 'banner identifies an ESP32-C3 ROM');
+const rom = /ESP-ROM:(esp32\w*)/.exec(text)?.[1];
+check(Boolean(rom), `banner identifies an ESP32 ROM (${rom ?? 'none'})`);
 check(/rst:0x\d/.test(text), 'reset reason line present');
 info(text.split(/\r?\n/).slice(0, 3).join(' | ').slice(0, 100));
 check(boot.bytes.length > 500, `payload is substantial (${boot.bytes.length} bytes, > 500)`);
