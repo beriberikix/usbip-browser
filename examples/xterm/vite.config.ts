@@ -14,7 +14,7 @@ export default defineConfig({
       // Use the library sources directly so the example always reflects the
       // working tree, with no build step between edit and reload.
       'usbip-browser/cdc-acm': fileURLToPath(new URL('../../src/cdc-acm/index.ts', import.meta.url)),
-      'usbip-browser/wisp': fileURLToPath(new URL('../../src/transport/wisp.ts', import.meta.url)),
+      'usbip-browser/relaynet': fileURLToPath(new URL('../../src/transport/relaynet.ts', import.meta.url)),
       'usbip-browser/mock': fileURLToPath(new URL('../../src/mock/index.ts', import.meta.url)),
       'usbip-browser': fileURLToPath(new URL('../../src/index.ts', import.meta.url)),
     },

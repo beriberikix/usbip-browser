@@ -10,16 +10,15 @@
  * STRICTLY READ-ONLY. It issues INQUIRY, READ CAPACITY (10), and READ (10) of
  * logical block 0. It never writes to the medium.
  *
- *   node scripts/msc-check.mjs [busid] [host:port] [wispUrl]
+ *   node scripts/msc-check.mjs [busid] [bridge address:3240]   (see scripts/relaynet-env.mjs)
  *
  * Unmount the device before binding it with usbip.
  */
 import { UsbipClient } from '../dist/index.js';
-import { WispTransport } from '../dist/wisp.js';
+import { relaynetTransport, targetFrom } from './relaynet-env.mjs';
 
 const busid = process.argv[2] ?? '5-1';
-const target = process.argv[3] ?? '127.0.0.1:3240';
-const wispUrl = process.argv[4] ?? 'ws://127.0.0.1:6001/';
+const target = targetFrom(process.argv[3]);
 
 const pass = (m) => console.log(`  \x1b[32m✓\x1b[0m ${m}`);
 const fail = (m) => console.log(`  \x1b[31m✗\x1b[0m ${m}`);
@@ -120,7 +119,7 @@ function findMassStorage(config) {
 
 console.log(`\nMass storage over USB/IP — busid ${busid}\n`);
 
-const client = new UsbipClient(new WispTransport(wispUrl, target));
+const client = new UsbipClient(relaynetTransport(target));
 await client.connect();
 const device = await client.importDevice(busid);
 pass(`imported ${busid} (${device.vendorId.toString(16).padStart(4, '0')}:${device.productId.toString(16).padStart(4, '0')})`);

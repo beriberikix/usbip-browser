@@ -2,7 +2,8 @@
  * xterm.js over USB/IP.
  *
  * Mock mode runs an emulated usbipd inside the page, so the hosted demo works
- * with no setup. Live mode talks to a real usbipd through a WISP relay.
+ * with no setup. Live mode talks to a real usbipd through relaynet: relaynet-bridge runs next
+ * to usbipd, and the page reaches it on the account's private network.
  */
 import { FitAddon } from '@xterm/addon-fit';
 import { Terminal } from '@xterm/xterm';
@@ -11,7 +12,7 @@ import '@xterm/xterm/css/xterm.css';
 import { UsbipClient, type UsbipTransport } from 'usbip-browser';
 import { CdcAcmDevice } from 'usbip-browser/cdc-acm';
 import { MockTransport } from 'usbip-browser/mock';
-import { WispTransport } from 'usbip-browser/wisp';
+import { RelaynetTransport } from 'usbip-browser/relaynet';
 
 const $ = <T extends HTMLElement>(id: string) => {
   const el = document.getElementById(id);
@@ -23,7 +24,7 @@ const statusEl = $<HTMLParagraphElement>('status');
 const motdEl = $<HTMLParagraphElement>('motd');
 const connectBtn = $<HTMLButtonElement>('connect');
 const disconnectBtn = $<HTMLButtonElement>('disconnect');
-const relayInput = $<HTMLInputElement>('relay');
+const tokenInput = $<HTMLInputElement>('token');
 const targetInput = $<HTMLInputElement>('target');
 const busidInput = $<HTMLInputElement>('busid');
 const liveFields = document.querySelector<HTMLDivElement>('[data-live]')!;
@@ -45,7 +46,7 @@ for (const radio of document.querySelectorAll<HTMLInputElement>('input[name="mod
     liveFields.hidden = !live;
     setStatus(
       live
-        ? 'Live mode needs a wss:// WISP relay reachable from this page.'
+        ? 'Live mode needs a relaynet API token and relaynet-bridge running next to usbipd.'
         : 'Ready. Mock mode needs no setup — just connect.',
     );
   });
@@ -85,22 +86,37 @@ function buildTransport(): { transport: UsbipTransport; busid: string } {
     return { transport: new MockTransport({ latencyMs: 4 }), busid: '1-1' };
   }
 
-  const relay = relayInput.value.trim();
+  const token = tokenInput.value.trim();
   const target = targetInput.value.trim();
   const busid = busidInput.value.trim() || '1-1';
-  if (!relay) throw new Error('Enter the WISP relay URL.');
-  if (!target) throw new Error('Enter the usbipd host:port.');
+  if (!token) throw new Error('Paste an API token from relaynet.network.');
+  if (!target) throw new Error('Enter the address relaynet-bridge logged, such as 10.0.2.15:3240.');
 
   return {
-    transport: new WispTransport(relay, target, {
-      onMotd: (motd) => {
-        motdEl.textContent = motd;
+    transport: new RelaynetTransport(target, {
+      token,
+      onStatus: (message) => {
+        motdEl.textContent = message;
         motdEl.hidden = false;
       },
     }),
     busid,
   };
 }
+
+// The token stays in this tab only, never in the address or in localStorage.
+try {
+  tokenInput.value = sessionStorage.getItem('usbip-browser.relaynet-token') ?? '';
+} catch {
+  // Storage blocked; the field just starts empty.
+}
+tokenInput.addEventListener('change', () => {
+  try {
+    sessionStorage.setItem('usbip-browser.relaynet-token', tokenInput.value.trim());
+  } catch {
+    // Storage blocked; nothing to remember it in.
+  }
+});
 
 async function connect(): Promise<void> {
   connectBtn.disabled = true;

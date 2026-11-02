@@ -155,7 +155,7 @@ export interface MockTransportOptions {
 /**
  * A transport whose far end is an emulated usbipd.
  *
- * Drop it into UsbipClient exactly like WispTransport; no network involved.
+ * Drop it into UsbipClient exactly like RelaynetTransport; no network involved.
  */
 export class MockTransport implements UsbipTransport {
   #device: UsbipDeviceInfo;

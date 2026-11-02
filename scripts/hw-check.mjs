@@ -6,16 +6,17 @@
  * endpoints, so it is safe to point at a device without knowing what is on
  * the other end of it.
  *
- *   node scripts/hw-check.mjs [busid] [host:port]
+ *   node scripts/hw-check.mjs [busid] [bridge address:3240]
+ *
+ * See scripts/relaynet-env.mjs for the token and the bridge.
  *
  * Requires `npm run build` and a usbipd with the device bound.
  */
 import { UsbipClient } from '../dist/index.js';
-import { WispTransport } from '../dist/wisp.js';
+import { relaynetTransport, targetFrom } from './relaynet-env.mjs';
 
 const busid = process.argv[2] ?? '5-1';
-const target = process.argv[3] ?? '127.0.0.1:3240';
-const wispUrl = process.argv[4] ?? 'ws://127.0.0.1:6001/';
+const target = targetFrom(process.argv[3]);
 
 const pass = (m) => console.log(`  \x1b[32m✓\x1b[0m ${m}`);
 const fail = (m) => console.log(`  \x1b[31m✗\x1b[0m ${m}`);
@@ -27,12 +28,12 @@ const check = (cond, msg) => (cond ? pass(msg) : (fail(msg), failures++));
 const hex4 = (n) => n.toString(16).padStart(4, '0');
 const view2bytes = (v) => new Uint8Array(v.buffer, v.byteOffset, v.byteLength);
 
-console.log(`\nusbipd ${target} via WISP ${wispUrl}, busid ${busid}\n`);
+console.log(`\nusbipd ${target} via relaynet, busid ${busid}\n`);
 
 // -- 1. What does the daemon say is there? ----------------------------------
 
 console.log('OP_REQ_DEVLIST against real usbipd');
-const listClient = new UsbipClient(new WispTransport(wispUrl, target));
+const listClient = new UsbipClient(relaynetTransport(target));
 await listClient.connect();
 const devices = await listClient.listDevices();
 await listClient.close();
@@ -69,7 +70,7 @@ for (const [i, iface] of listed.interfaces.entries()) {
 // -- 2. Import and read the real descriptors --------------------------------
 
 console.log('\nOP_REQ_IMPORT + control transfers on endpoint 0');
-const client = new UsbipClient(new WispTransport(wispUrl, target));
+const client = new UsbipClient(relaynetTransport(target));
 await client.connect();
 const device = await client.importDevice(busid);
 check(device.busid === busid, `imported ${busid}`);

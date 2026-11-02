@@ -1,22 +1,21 @@
 /**
- * Drive the real WISP transport against a real WISP server, headlessly.
+ * Drive the real relaynet transport through the real relay, headlessly.
  *
- * Verifies the two things the unit tests cannot: that our handshake is
- * accepted by an independent implementation, and that flow control behaves
- * against a server that actually enforces it.
+ * Verifies what the unit tests cannot: that relaynet leases an address,
+ * routes to relaynet-bridge, and carries sustained USB/IP traffic.
  *
- *   node scripts/live-check.mjs [wispUrl] [target] [busid]
+ *   node scripts/fake-usbipd.mjs &               # or a real usbipd
+ *   relaynet-bridge -expose 3240 &               # logs its address
+ *   RELAYNET_TOKEN=rr_... node scripts/live-check.mjs <bridge address:3240> [busid]
  *
- * Requires `npm run build`, a WISP server, and something USB/IP-shaped at the
- * target (scripts/fake-usbipd.mjs will do).
+ * Requires `npm run build`. See scripts/relaynet-env.mjs.
  */
 import { UsbipClient } from '../dist/index.js';
-import { WispTransport } from '../dist/wisp.js';
+import { relaynetTransport, targetFrom } from './relaynet-env.mjs';
 import { CdcAcmDevice } from '../dist/cdc-acm.js';
 
-const url = process.argv[2] ?? 'ws://127.0.0.1:6001/';
-const target = process.argv[3] ?? '127.0.0.1:3240';
-const busid = process.argv[4] ?? '1-1';
+const target = targetFrom(process.argv[2]);
+const busid = process.argv[3] ?? '1-1';
 
 const pass = (m) => console.log(`  \x1b[32m✓\x1b[0m ${m}`);
 const fail = (m) => console.log(`  \x1b[31m✗\x1b[0m ${m}`);
@@ -42,19 +41,17 @@ async function readUntil(reader, predicate, limit = 200) {
   return text;
 }
 
-console.log(`\nWISP ${url}  ->  usbipd ${target}  busid ${busid}\n`);
+console.log(`\nrelaynet  ->  usbipd ${target}  busid ${busid}\n`);
 
 // -- 1. list devices --------------------------------------------------------
 
-console.log('handshake + OP_REQ_DEVLIST');
+console.log('relay session + DHCP + OP_REQ_DEVLIST');
 {
-  const transport = new WispTransport(url, target, {
-    onMotd: (motd) => console.log(`  motd: ${motd}`),
-  });
+  const transport = relaynetTransport(target);
   const client = new UsbipClient(transport);
+  const started = Date.now();
   await client.connect();
-  console.log(`  negotiated WISP v${transport.version}`);
-  console.log(`  extensions: ${[...transport.negotiatedExtensions].map((e) => '0x' + e.toString(16)).join(', ') || 'none'}`);
+  check(/^10\.0\.2\.\d+$/.test(transport.address ?? ''), `leased ${transport.address} in ${Date.now() - started} ms`);
 
   const devices = await client.listDevices();
   check(devices.length === 1, `listed ${devices.length} device(s)`);
@@ -72,7 +69,7 @@ console.log('handshake + OP_REQ_DEVLIST');
 
 console.log('\nOP_REQ_IMPORT + URB phase');
 {
-  const client = new UsbipClient(new WispTransport(url, target));
+  const client = new UsbipClient(relaynetTransport(target));
   await client.connect();
   const device = await client.importDevice(busid);
   check(device.busid === busid, `imported ${device.busid}`);
@@ -94,9 +91,9 @@ console.log('\nOP_REQ_IMPORT + URB phase');
 
 // -- 3. CDC-ACM over the real bridge ---------------------------------------
 
-console.log('\nCDC-ACM through the bridge');
+console.log('\nCDC-ACM through relaynet');
 {
-  const client = new UsbipClient(new WispTransport(url, target));
+  const client = new UsbipClient(relaynetTransport(target));
   await client.connect();
   const device = await client.importDevice(busid);
   const port = await CdcAcmDevice.open(device, { baudRate: 115200 });
@@ -110,15 +107,15 @@ console.log('\nCDC-ACM through the bridge');
   const response = await readUntil(reader, (t) => t.includes('busid'));
   check(response.includes('2e8a:000a'), 'command round-tripped');
 
-  // Sustained traffic, to exercise the flow-control window rather than a
-  // couple of packets that would fit in any buffer.
+  // Sustained traffic, so TCP's own window and the relay's pacing are
+  // exercised rather than a couple of packets that fit in any buffer.
   let echoed = 0;
   for (let i = 0; i < 40; i++) {
     await writer.write(new TextEncoder().encode(`echo packet-${i}\r`));
     const out = await readUntil(reader, (t) => t.includes(`packet-${i}\r\n`), 40);
     if (out.includes(`packet-${i}`)) echoed++;
   }
-  check(echoed === 40, `${echoed}/40 sustained round trips under flow control`);
+  check(echoed === 40, `${echoed}/40 sustained round trips through the relay`);
 
   writer.releaseLock();
   reader.releaseLock();

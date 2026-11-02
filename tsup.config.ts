@@ -3,7 +3,7 @@ import { defineConfig } from 'tsup';
 export default defineConfig({
   entry: {
     index: 'src/index.ts',
-    wisp: 'src/transport/wisp.ts',
+    relaynet: 'src/transport/relaynet.ts',
     'cdc-acm': 'src/cdc-acm/index.ts',
     mock: 'src/mock/index.ts',
   },

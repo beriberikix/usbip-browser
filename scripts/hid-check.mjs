@@ -10,15 +10,15 @@
  * The gadget's far side is /dev/hidg0, so reports are injected on demand.
  *
  *   sudo scripts/vudc-setup.sh hid
- *   node scripts/hid-check.mjs [busid]
+ *   relaynet-bridge -expose 3240 &      # on this machine, next to usbipd
+ *   node scripts/hid-check.mjs [busid] <bridge address:3240>
  */
 import fs from 'node:fs';
 import { UsbipClient } from '../dist/index.js';
-import { WispTransport } from '../dist/wisp.js';
+import { relaynetTransport, targetFrom } from './relaynet-env.mjs';
 
 const busid = process.argv[2] ?? 'usbip-vudc.0';
-const target = process.argv[3] ?? '127.0.0.1:3240';
-const wispUrl = process.argv[4] ?? 'ws://127.0.0.1:6001/';
+const target = targetFrom(process.argv[3]);
 const GADGET_HID = '/dev/hidg0';
 
 const pass = (m) => console.log(`  \x1b[32m✓\x1b[0m ${m}`);
@@ -71,7 +71,7 @@ function sendKey(keycode, modifier = 0) {
   fs.writeSync(gadget, Buffer.alloc(8)); // release
 }
 
-const client = new UsbipClient(new WispTransport(wispUrl, target));
+const client = new UsbipClient(relaynetTransport(target));
 await client.connect();
 const device = await client.importDevice(busid);
 check(device.vendorId === 0x1d6b, `imported ${busid} (${device.vendorId.toString(16)}:${device.productId.toString(16)})`);

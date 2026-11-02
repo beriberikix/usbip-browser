@@ -5,9 +5,10 @@ A **USB/IP client that runs in the browser**. It speaks the USB/IP wire protocol
 
 ```ts
 import { UsbipClient } from 'usbip-browser';
-import { WispTransport } from 'usbip-browser/wisp';
+import { RelaynetTransport } from 'usbip-browser/relaynet';
 
-const client = new UsbipClient(new WispTransport('wss://relay.example/', '192.168.1.10:3240'));
+// 10.0.2.15 is the address relaynet-bridge logged on the machine running usbipd.
+const client = new UsbipClient(new RelaynetTransport('10.0.2.15:3240', { token }));
 await client.connect();
 
 const device = await client.importDevice('1-1');
@@ -15,7 +16,9 @@ await device.selectConfiguration(1);
 const chunk = await device.transferIn(2, 64);
 ```
 
-Framework-agnostic, TypeScript, **zero runtime dependencies**.
+Framework-agnostic, TypeScript. Runtime dependencies are permissively licensed only, which CI
+enforces: [tcpip.js](https://github.com/chipmk/tcpip.js) (lwIP compiled to WebAssembly) and
+relaynet's client helper, both MIT.
 
 ## Why this isn't WebUSB
 
@@ -42,42 +45,55 @@ SCSI READ (10) of logical block 0
 The trade-off is that you need a `usbipd` on the machine with the hardware, and a bridge to reach
 it from a browser.
 
-## The bridge
+## The bridge: relaynet
 
-Browsers cannot open TCP sockets, and USB/IP is raw TCP on port 3240. This library uses
-[WISP](https://github.com/MercuryWorkshop/wisp-protocol), which tunnels TCP over WebSocket and
-lets the *client* name `host:port` per stream — so a connect form can target any USB/IP server
-at runtime.
+Browsers cannot open TCP sockets, and USB/IP is raw TCP on port 3240. This library reaches a
+`usbipd` through [relaynet](https://relaynet.network), which carries Ethernet frames over a
+WebSocket and gives the sessions of one account a private network. On the machine with the
+hardware, next to `usbipd`, run
+[relaynet-bridge](https://github.com/beriberikix/relaynet-bridge):
 
-Run any WISP server; pick by toolchain:
+```sh
+export RELAYNET_TOKEN=rr_...
+relaynet-bridge -expose 3240
+# level=INFO msg=joined addr=10.0.2.15 expose="10.0.2.15:3240 -> 127.0.0.1:3240"
+```
 
-| Server | Language |
-|---|---|
-| [wisp-server-python](https://github.com/MercuryWorkshop/wisp-server-python) | Python |
-| [wisp-js/server](https://github.com/MercuryWorkshop/wisp-js) | JavaScript |
-| [epoxy-server](https://github.com/MercuryWorkshop/epoxy-tls) | Rust |
-| [Woeful](https://github.com/MercuryWorkshop/Woeful) | C++ |
-| [mrrowisp](https://github.com/soap-phia/mrrowisp) | Go |
+and connect the page to the address it logs. The bridge connects out to the relay like any other
+session, so **nothing listens on the internet** and no inbound port is opened: no proxy of your
+own to host, secure or keep from becoming an open relay.
 
-> **An unrestricted WISP server is an open proxy.** Anything that can reach it can open TCP
-> connections to anywhere it can reach. Put a host allowlist in front of any public deployment,
-> and use the password-auth extension (supported below).
+```
+UsbipClient -> RelaynetTransport -> tcpip.js (TCP <-> Ethernet frames)
+  -> relaynet helper (WebSocket, relay.v1) -> relaynet -> relaynet-bridge -> usbipd
+```
 
-The client implements **WISP v2** with automatic **v1 fallback**, and negotiates the
-stream-open-confirmation extension whenever a server offers it — worth having, because USB/IP
-speaks first, so without it a wrong host looks like a hang rather than an error.
+A page has no TCP/IP stack, so the transport brings one: lwIP, compiled to WebAssembly by
+tcpip.js (about 94 KB, 36 KB gzipped). It leases an address over DHCP, which matters: relaynet
+routes between sessions by lease, so a session on a static address never hears back from the
+bridge.
 
-> **No WebSocket subprotocol is advertised by default.** The v2 spec says a
-> `Sec-WebSocket-Protocol` header signals v2 support but never fixes a token, and
-> wisp-server-python 0.9.0 fails the WebSocket handshake outright if *any* subprotocol is
-> requested. Advertising none costs nothing — a server that doesn't send `INFO` first is handled
-> by the v1 fallback — so it is the only interoperable default. Override with `subprotocols`
-> if you have a server that requires one.
+What to know:
+
+- **It needs a relaynet beta account.** Only a beta account's sessions share a network; demo
+  tokens and free accounts cannot reach a bridge. An account holds four sessions and the bridge
+  uses one, and each imported device is a session of its own.
+- **Or run the relay yourself.** relaynet is a hosted
+  [rootlessRelay](https://github.com/obegron/rootlessRelay), which speaks the same protocol; pass
+  its URL, with no token if it runs without authentication:
+  `new RelaynetTransport(target, { url: 'ws://127.0.0.1:8086/' })`.
+- **Every transfer is a round trip through the relay** (tens to a couple of hundred
+  milliseconds, 1 MiB/s per session). Serial adapters, debug probes and security keys are fine;
+  mass storage works but slowly; video and audio do not fit.
+- **A dropped session recovers.** relaynet's helper reconnects, and the transport runs DHCP again
+  with the same MAC; relaynet holds the address for 60 s, so the TCP connection to the bridge
+  carries on. If the address does not come back, the transport closes with a `RelaynetError`.
 
 ```ts
-new WispTransport('wss://relay.example/', '192.168.1.10:3240', {
-  auth: { username: 'ada', password: '…' },   // extension 0x02
-  onMotd: (motd) => console.log(motd),        // extension 0x04
+new RelaynetTransport('10.0.2.15:3240', {
+  token,                                     // a beta account's API token
+  onStatus: (line) => console.log(line),     // session dropped / restored
+  timeoutMs: 20_000,                         // relay + DHCP + TCP connect
 });
 ```
 
@@ -90,7 +106,7 @@ npm install usbip-browser
 | Entry point | Contents |
 |---|---|
 | `usbip-browser` | `UsbipClient`, `UsbipDevice`, errors, transport interface |
-| `usbip-browser/wisp` | `WispTransport` |
+| `usbip-browser/relaynet` | `RelaynetTransport` — USB/IP through relaynet |
 | `usbip-browser/cdc-acm` | `CdcAcmDevice` — serial ports as Web Streams |
 | `usbip-browser/mock` | `MockTransport` — an emulated usbipd, for demos and tests |
 
@@ -133,7 +149,8 @@ usbip list -l                  # find the busid
 sudo usbip bind -b 1-1         # detaches the kernel driver
 ```
 
-Then run a WISP server alongside it, and point the example at both.
+Then run `relaynet-bridge -expose 3240` alongside it, and give the example (Live mode) your token
+and the address the bridge logs.
 
 > **A freshly bound device arrives unconfigured.** `usbip bind` detaches the kernel driver and
 > leaves the device in the address state, so `OP_REP_DEVLIST` reports
@@ -147,21 +164,13 @@ Then run a WISP server alongside it, and point the example at both.
 >   Read the configuration descriptor over endpoint 0 instead — `scripts/hw-check.mjs` shows the
 >   two-stage read.
 
-**Mixed content:** an `https://` page cannot open a `ws://` socket, so the hosted demo needs
-`wss://`. Local development over `http://localhost` has no such restriction.
+## Encryption
 
-## TLS
+The page's hop to relaynet is `wss://`, and so is the bridge's. Between them, USB/IP is plaintext
+TCP, as it is on any network: `usbipd` has no TLS. The relay carries it as plain IP between your
+own sessions, so if the relay operator must not see your URBs, run rootlessRelay yourself.
 
-`wss://` encrypts the browser↔relay hop and is supported out of the box.
-
-End-to-end TLS terminated in the browser — as [epoxy-tls](https://github.com/MercuryWorkshop/epoxy-tls)
-provides — is deliberately **not** a dependency, for two reasons. It does not apply: `usbipd`
-speaks plaintext on 3240, so there is no TLS listener to handshake with unless you front it with
-`stunnel`. And it is **AGPL-3.0-only**, which would propagate to every application embedding this
-library.
-
-If you need it, implement `UsbipTransport` over epoxy in your own application — it is a small
-interface, and the licence choice is then yours:
+Other ways to reach port 3240 fit the same small seam, `UsbipTransport`:
 
 ```ts
 interface UsbipTransport {
@@ -173,8 +182,7 @@ interface UsbipTransport {
 }
 ```
 
-The same seam takes a Direct Sockets `TCPSocket` in an Isolated Web App, which removes the bridge
-entirely.
+A Direct Sockets `TCPSocket` in an Isolated Web App, for instance, removes the relay entirely.
 
 ## Known-unverified
 
@@ -207,35 +215,36 @@ Two paths are implemented and unit-tested, but have never run against a real ker
 
 ```sh
 npm install
-npm test          # 65 tests: codec, framing, WISP handshake, end-to-end
+npm test          # 85 tests: codec, framing, DHCP, the relaynet transport, end-to-end
 npm run typecheck
 npm run build
 ```
 
-The dependency-free constraint is enforced in CI, because every off-the-shelf WISP and TLS
-implementation in this ecosystem is AGPL.
+`scripts/check-licenses.mjs`, which CI runs, fails on any runtime dependency, direct or
+transitive, that is not permissively licensed: this library is embedded in other applications,
+and a copyleft dependency would pass its terms on to them.
 
-### Testing against a real WISP server, without USB hardware
+The relaynet tests run against an in-process relay (`test/support/fake-relay.ts`) that answers
+DHCP and routes by lease as relaynet does; relaynet's real helper, both lwIP stacks and the USB/IP
+codec are the real ones, so a dropped session and its recovery are tested without a network.
+
+### Testing through relaynet, without USB hardware
 
 `MockTransport` is the server half of USB/IP, so putting a socket around it gives a usable fake
-`usbipd`. Combined with a real WISP server, this exercises the whole live path:
+`usbipd`. Behind relaynet-bridge, this exercises the whole live path through the real relay:
 
 ```sh
 npm run build
 node scripts/fake-usbipd.mjs                       # USB/IP on 127.0.0.1:3240
+relaynet-bridge -expose 3240                       # note the address it logs
 
-pip install git+https://github.com/MercuryWorkshop/wisp-server-python
-python -m wisp.server --host 127.0.0.1 --port 6001 --allow-loopback
-
-node scripts/live-check.mjs                        # headless assertions
-cd examples/xterm && npm run dev                   # or drive it from the browser
+export RELAYNET_TOKEN=rr_...                       # or RELAYNET_TOKEN_FILE
+node scripts/live-check.mjs 10.0.2.15:3240         # headless assertions
+cd examples/xterm && npm run dev                   # or Live mode in the browser
 ```
 
-`--allow-loopback` is required because the server refuses loopback and private addresses by
-default — a sensible default worth preserving in any real deployment.
-
-With real hardware bound, `scripts/hw-check.mjs` runs the same checks against a genuine
-`usbipd`. It is read-only: it lists, imports, and reads descriptors over endpoint 0, never
+With real hardware bound, `scripts/hw-check.mjs <busid> <bridge address:3240>` runs the same
+checks against a genuine `usbipd`. It is read-only: it lists, imports, and reads descriptors over endpoint 0, never
 writing to the device or touching bulk endpoints.
 
 ```sh

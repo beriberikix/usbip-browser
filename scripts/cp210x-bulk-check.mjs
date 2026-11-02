@@ -8,18 +8,17 @@
  * the chip emits a known ROM banner on reset, and its ROM bootloader answers
  * a SYNC command, giving a deterministic round trip in both directions.
  *
- *   node scripts/cp210x-bulk-check.mjs [busid] [host:port] [wispUrl]
+ *   node scripts/cp210x-bulk-check.mjs [busid] [bridge address:3240]   (see scripts/relaynet-env.mjs)
  *
  * Side effect: resets the ESP32 (via the board's DTR/RTS auto-reset circuit)
  * and leaves it in ROM download mode. Power-cycle or reset to return to the
  * application.
  */
 import { UsbipClient } from '../dist/index.js';
-import { WispTransport } from '../dist/wisp.js';
+import { relaynetTransport, targetFrom } from './relaynet-env.mjs';
 
 const busid = process.argv[2] ?? '5-1';
-const target = process.argv[3] ?? '127.0.0.1:3240';
-const wispUrl = process.argv[4] ?? 'ws://127.0.0.1:6001/';
+const target = targetFrom(process.argv[3]);
 
 const pass = (m) => console.log(`  \x1b[32m✓\x1b[0m ${m}`);
 const fail = (m) => console.log(`  \x1b[31m✗\x1b[0m ${m}`);
@@ -144,9 +143,9 @@ function syncFrame() {
 
 // ---------------------------------------------------------------------------
 
-console.log(`\nCP2102N bulk check — busid ${busid} via ${wispUrl} -> ${target}\n`);
+console.log(`\nCP2102N bulk check — busid ${busid} via relaynet -> ${target}\n`);
 
-const client = new UsbipClient(new WispTransport(wispUrl, target));
+const client = new UsbipClient(relaynetTransport(target));
 await client.connect();
 const device = await client.importDevice(busid);
 check(device.vendorId === 0x10c4, `imported ${busid} (${device.vendorId.toString(16)}:${device.productId.toString(16)})`);

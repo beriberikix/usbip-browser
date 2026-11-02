@@ -1,24 +1,33 @@
 {
   "name": "usbip-browser",
   "version": "0.1.0",
-  "description": "USB/IP client for the browser. Talk to remote USB devices over WISP, without WebUSB.",
+  "description": "USB/IP client for the browser. Talk to remote USB devices over relaynet, without WebUSB.",
   "type": "module",
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/beriberikix/usbip-browser.git"
   },
-  "keywords": ["usbip", "usb", "wisp", "browser", "cdc-acm", "serial"],
+  "keywords": [
+    "usbip",
+    "usb",
+    "relaynet",
+    "browser",
+    "cdc-acm",
+    "serial"
+  ],
   "sideEffects": false,
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
     },
-    "./wisp": {
-      "types": "./dist/wisp.d.ts",
-      "import": "./dist/wisp.js"
+    "./relaynet": {
+      "types": "./dist/relaynet.d.ts",
+      "import": "./dist/relaynet.js"
     },
     "./cdc-acm": {
       "types": "./dist/cdc-acm.d.ts",
@@ -40,5 +49,12 @@
     "tsup": "^8.3.5",
     "typescript": "^5.7.2",
     "vitest": "^2.1.8"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "relaynet": "^0.1.2",
+    "tcpip": "^0.4.0"
   }
 }
