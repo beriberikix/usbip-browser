@@ -14,7 +14,7 @@
     // the library sources rather than a built dist/.
     "paths": {
       "usbip-browser": ["../../src/index.ts"],
-      "usbip-browser/wisp": ["../../src/transport/wisp.ts"],
+      "usbip-browser/relaynet": ["../../src/transport/relaynet.ts"],
       "usbip-browser/cdc-acm": ["../../src/cdc-acm/index.ts"],
       "usbip-browser/mock": ["../../src/mock/index.ts"]
     }

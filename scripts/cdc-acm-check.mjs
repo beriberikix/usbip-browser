@@ -11,16 +11,16 @@
  * batch would never arrive.
  *
  *   sudo scripts/vudc-setup.sh acm
- *   node scripts/cdc-acm-check.mjs [busid]
+ *   relaynet-bridge -expose 3240 &      # on this machine, next to usbipd
+ *   node scripts/cdc-acm-check.mjs [busid] <bridge address:3240>
  */
 import fs from 'node:fs';
 import { UsbipClient } from '../dist/index.js';
-import { WispTransport } from '../dist/wisp.js';
+import { relaynetTransport, targetFrom } from './relaynet-env.mjs';
 import { CdcAcmDevice } from '../dist/cdc-acm.js';
 
 const busid = process.argv[2] ?? 'usbip-vudc.0';
-const target = process.argv[3] ?? '127.0.0.1:3240';
-const wispUrl = process.argv[4] ?? 'ws://127.0.0.1:6001/';
+const target = targetFrom(process.argv[3]);
 const GADGET_TTY = '/dev/ttyGS0';
 
 const pass = (m) => console.log(`  \x1b[32m✓\x1b[0m ${m}`);
@@ -47,7 +47,7 @@ const sendFromDevice = (text) => fs.writeSync(gadget, Buffer.from(text));
 // tears the gadget down underneath the import that follows. `usbip list -d`
 // on the host covers the listing case; hw-check.mjs covers OP_REQ_DEVLIST
 // against a real device.
-const client = new UsbipClient(new WispTransport(wispUrl, target));
+const client = new UsbipClient(relaynetTransport(target));
 await client.connect();
 const device = await client.importDevice(busid);
 check(device.vendorId === 0x1d6b, `imported ${busid} (${device.vendorId.toString(16)}:${device.productId.toString(16)})`);

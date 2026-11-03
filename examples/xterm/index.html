@@ -23,18 +23,18 @@
           </label>
           <label>
             <input type="radio" name="mode" value="live" />
-            <span>Live (WISP)</span>
+            <span>Live (relaynet)</span>
           </label>
         </fieldset>
 
         <div class="live-fields" data-live hidden>
           <label>
-            WISP relay
-            <input id="relay" type="url" placeholder="wss://relay.example/" size="26" />
+            relaynet token
+            <input id="token" type="password" placeholder="rr_..." size="22" autocomplete="off" spellcheck="false" />
           </label>
           <label>
-            usbipd host:port
-            <input id="target" type="text" placeholder="192.168.1.10:3240" size="20" />
+            bridge address
+            <input id="target" type="text" placeholder="10.0.2.15:3240" size="16" />
           </label>
           <label>
             busid
@@ -55,9 +55,11 @@
     <footer class="foot">
       <p>
         Mock mode runs an in-browser USB/IP server that emits real wire bytes through the same
-        codec as the network path. Live mode needs a
-        <a href="https://github.com/MercuryWorkshop/wisp-protocol" rel="noreferrer">WISP</a>
-        server reachable over <code>wss://</code>, bridging to <code>usbipd</code> on port 3240.
+        codec as the network path. Live mode reaches a real <code>usbipd</code> through
+        <a href="https://relaynet.network" rel="noreferrer">relaynet</a>: run
+        <a href="https://github.com/beriberikix/relaynet-bridge" rel="noreferrer">relaynet-bridge</a>
+        <code>-expose 3240</code> next to it and enter the address it logs. Needs a relaynet beta
+        account; nothing listens on the internet.
       </p>
     </footer>
 

@@ -2,8 +2,8 @@
  * A bidirectional byte pipe carrying one TCP stream.
  *
  * This is the whole seam between the USB/IP protocol and however you reach
- * port 3240. It is deliberately tiny so that alternative bridges -- an
- * epoxy-tls WASM stream for end-to-end TLS, a Direct Sockets `TCPSocket` in
+ * port 3240. It is deliberately tiny so that alternative bridges -- relaynet
+ * (RelaynetTransport), a Direct Sockets `TCPSocket` in
  * an Isolated Web App, an in-process mock -- can be dropped in without
  * touching the protocol code.
  *

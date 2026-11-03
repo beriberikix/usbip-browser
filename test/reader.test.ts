@@ -73,6 +73,29 @@ describe('ByteReader', () => {
     await expect(pending).rejects.toThrow('socket died');
   });
 
+  it('keeps bytes that arrived before a clean close readable (end of stream)', async () => {
+    const r = new ByteReader();
+    r.push(bytes(1, 2, 3, 4, 5, 6));
+    r.close();
+    expect([...(await r.read(4))]).toEqual([1, 2, 3, 4]);
+    expect([...(await r.read(2))]).toEqual([5, 6]);
+    await expect(r.read(1)).rejects.toThrow(/closed/);
+  });
+
+  it('rejects a read that needs more than remains after a clean close', async () => {
+    const r = new ByteReader();
+    r.push(bytes(1, 2));
+    r.close();
+    await expect(r.read(4)).rejects.toThrow(/closed/);
+  });
+
+  it('discards buffered bytes when closed with an error', async () => {
+    const r = new ByteReader();
+    r.push(bytes(1, 2, 3, 4));
+    r.close(new Error('socket died'));
+    await expect(r.read(2)).rejects.toThrow('socket died');
+  });
+
   it('rejects reads issued after close', async () => {
     const r = new ByteReader();
     r.close();

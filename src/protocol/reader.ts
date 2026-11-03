@@ -51,17 +51,26 @@ export class ByteReader {
   }
 
   /**
-   * Close the reader. Any pending read rejects, as do subsequent reads.
-   * Buffered-but-unread bytes are discarded.
+   * Close the reader. A pending read rejects, since it is waiting for bytes
+   * that will never come.
+   *
+   * A clean close (no `cause`) is end-of-stream, as a TCP FIN is: bytes that
+   * arrived before it stay readable, and only a read that needs more than
+   * remain rejects. usbipd relies on this -- it answers OP_REQ_DEVLIST and
+   * closes the socket at once, so the close can arrive before the parser has
+   * consumed the reply. A close with a `cause` is a failure, and whatever is
+   * buffered is discarded.
    */
   close(cause?: Error): void {
     if (this.#closed) return;
     this.#closed = cause ?? new Error('ByteReader: closed');
     const waiter = this.#waiter;
     this.#waiter = null;
-    this.#chunks = [];
-    this.#available = 0;
-    this.#offset = 0;
+    if (cause) {
+      this.#chunks = [];
+      this.#available = 0;
+      this.#offset = 0;
+    }
     waiter?.reject(this.#closed);
   }
 
